@@ -92,6 +92,8 @@ td{padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}
 .empty{border:1.5px dashed var(--line);border-radius:var(--r);padding:24px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:center}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;z-index:30;max-width:calc(100vw - 32px)}
 .login{max-width:380px;margin:60px auto}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
+.btn.danger.fill{background:var(--bad);border-color:var(--bad);color:#fff}
 .modal{position:fixed;inset:0;background:rgba(10,14,20,.55);display:grid;place-items:center;z-index:20;padding:16px}
 .modal>.panel{width:min(520px,100%);max-height:calc(100dvh - 32px);overflow:auto}
 .qr{background:#fff;border-radius:12px;padding:16px;display:grid;place-items:center;align-self:center;width:256px;height:256px}
@@ -147,7 +149,7 @@ function detailHtml(){
   const d=detail, s=d.status, p=d.client.profile||{};
   const top=d.summary.exercises.slice(0,8);
   return `<div style="display:flex;flex-direction:column;gap:16px">
-  <div class="panel"><div class="row between"><div><div class="eyebrow">${esc(p.goal||"No goal set")} · ${esc(p.experience||"")}</div><h1>${esc(d.client.name)}</h1></div>${chip(s.status)}</div>
+  <div class="panel"><div class="row between"><div><div class="eyebrow">${esc(p.goal||"No goal set")} · ${esc(p.experience||"")}</div><h1>${esc(d.client.name)}</h1></div><div class="row">${chip(s.status)}<button class="btn sm danger" data-a="remove">Remove client</button></div></div>
     <div class="kpis"><div class="stat"><div class="l">This week</div><div class="v num">${s.sessions_this_week}/${s.target}</div></div>
       <div class="stat"><div class="l">6-week adherence</div><div class="v num">${d.summary.adherence_pct}%</div></div>
       <div class="stat"><div class="l">Last workout</div><div class="v num">${s.days_since_last==null?"—":s.days_since_last+"d ago"}</div></div>
@@ -217,6 +219,7 @@ document.addEventListener("click",async ev=>{
     if(a==="unseed"){await api("seed",{method:"DELETE"});sel=null;detail=null;toast("Removed demo clients");await loadClients()}
     if(a==="refresh")await loadClients();
     if(a==="invite")await openInvite();
+    if(a==="remove")confirmRemove();
     if(a==="open"){lastRun=null;await openClient(t.dataset.id)}
     if(a==="save-notes"){await api("notes",{method:"POST",body:JSON.stringify({clientId:sel,notes:$("#notesI").value})});detail.client.profile.notes=$("#notesI").value;toast("Notes saved")}
     if(a==="run")await runAgent();
@@ -256,6 +259,24 @@ async function openInvite(){
   m.addEventListener("click",async e=>{
     if(e.target===m||e.target.closest('[data-x="close"]'))close();
     if(e.target.closest('[data-x="copy"]')){try{await navigator.clipboard.writeText(link());toast("Invite link copied")}catch(err){const r=document.createRange();r.selectNodeContents(m.querySelector("#invLink"));getSelection().removeAllRanges();getSelection().addRange(r);toast("Press Ctrl+C to copy")}}
+  });
+}
+// Remove a client, with an in-page confirmation
+function confirmRemove(){
+  const name=detail.client.name;
+  const m=document.createElement("div");m.className="modal";m.setAttribute("role","dialog");m.setAttribute("aria-modal","true");m.setAttribute("aria-label","Remove client");
+  m.innerHTML=`<div class="panel"><h2>Remove ${esc(name)}?</h2>
+    <p style="margin:0">This deletes their synced log, AI Coach runs, assigned programs and messages from your dashboard. It can’t be undone.</p>
+    <p class="note" style="margin:0">Their own app keeps their workout history. It will disconnect from you the next time it syncs, and they can rejoin later with a new invite.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-x="cancel">Cancel</button><button class="btn danger fill" data-x="ok">Remove ${esc(name.split(" ")[0])}</button></div></div>`;
+  document.body.appendChild(m);m.querySelector('[data-x="cancel"]').focus();
+  const close=()=>{m.remove();document.removeEventListener("keydown",k)};const k=e=>{if(e.key==="Escape")close()};document.addEventListener("keydown",k);
+  m.addEventListener("click",async e=>{
+    if(e.target===m||e.target.closest('[data-x="cancel"]'))return close();
+    const ok=e.target.closest('[data-x="ok"]');if(!ok)return;
+    ok.disabled=true;ok.textContent="Removing…";
+    try{await api("client?id="+encodeURIComponent(sel),{method:"DELETE"});close();toast(`Removed ${name}`);sel=null;detail=null;lastRun=null;await loadClients()}
+    catch(err){toast(err.message);ok.disabled=false;ok.textContent="Remove"}
   });
 }
 $("#logout").onclick=()=>{pin="";try{sessionStorage.removeItem("coachPin")}catch(e){};render()};

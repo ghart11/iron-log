@@ -30,6 +30,8 @@ export async function handleSync(req, { store, env }) {
   if (code !== String(env.GYM_CODE || "IRONDEMO").toUpperCase()) return bad("That gym code isn't right. Ask your trainer for it.", 403);
   const id = clean(body.clientId, 64).replace(/[^a-zA-Z0-9_-]/g, "");
   if (id.length < 8) return bad("Missing client id.");
+  // A client the coach removed can't sync back in with the same id; the app disconnects and they can rejoin with an invite.
+  if (await store.get(`removed/${id}`, { type: "json" })) return json({ removed: true, error: "Your coach removed this connection. Ask them for a new invite to rejoin." }, 410);
   const key = `clients/${id}`;
   const prev = (await store.get(key, { type: "json" })) || {};
   const rec = { ...prev, clientId: id, name: clean(body.name, 60) || prev.name || "Client",
@@ -53,6 +55,15 @@ export async function handleCoach(req, { store, env, callModel, notify, path, st
     const { blobs } = await store.list({ prefix: "clients/" });
     const all = (await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })))).filter(Boolean);
     return json({ clients: all.map((c) => ({ ...weeklyStatus(c), profile: c.profile, updatedAt: c.updatedAt, demo: !!c.demo })) });
+  }
+  if (route === "client" && req.method === "DELETE") {
+    const id = clean(url.searchParams.get("id"), 64);
+    const c = await store.get(`clients/${id}`, { type: "json" });
+    if (!c) return bad("Client not found.", 404);
+    const { blobs } = await store.list({ prefix: `agent-state/${id}/` });
+    for (const key of [`clients/${id}`, `assign/${id}`, `inbox/${id}`, `runs/${id}`, ...blobs.map((b) => b.key)]) await store.delete(key);
+    if (!c.demo) await store.setJSON(`removed/${id}`, { at: new Date().toISOString(), name: c.name });
+    return json({ ok: true, removed: c.name });
   }
   if (route === "client" && req.method === "GET") {
     const id = url.searchParams.get("id") || "";

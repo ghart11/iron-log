@@ -111,4 +111,14 @@ assert.equal(rep.clients[0].status, "at_risk"); ok(`weekly check-in ran 6 steps:
 const jordanInbox = store.m.get("inbox/demo-jordan"); assert.ok(jordanInbox?.[0]?.text.includes("missed you")); ok("at-risk client gets a nudge in their inbox");
 r = await coach(store, "/api/coach/reports", "GET"); assert.equal((await r.json()).reports.length, 1); ok("report is saved and listed");
 
+// --- removing a client
+r = await coach(store, "/api/coach/client?id=abcdefgh12", "DELETE");
+assert.equal((await r.json()).removed, "Test Client");
+assert.ok(!store.m.has("clients/abcdefgh12"));
+r = await handleSync(req("/api/sync", "POST", { code: "IRONDEMO", clientId: "abcdefgh12", name: "Test Client", data: {} }), { store, env });
+assert.equal(r.status, 410); assert.ok(!store.m.has("clients/abcdefgh12"));
+r = await handleSync(req("/api/sync", "POST", { code: "IRONDEMO", clientId: "newdevice99", name: "Test Client", data: {} }), { store, env });
+assert.equal(r.status, 200);
+ok("removed client is deleted, can't sync back with the old id, and can rejoin with a new one");
+
 console.log(`\n${passed} checks passed`);

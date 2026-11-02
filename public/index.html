@@ -2364,6 +2364,12 @@ async function coachSync(silent){
     const exs={};for(const [k,v] of Object.entries(S.exercises||{})){const {imgData,...rest}=v||{};exs[k]=rest}
     const r=await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({clientId:c.clientId,code:c.code,name:c.name,profile:c.profile,data:{sessions:S.sessions,exercises:exs,unit:UI.unit}})});
     const j=await r.json().catch(()=>({}));
+    if(r.status===410||j.removed){
+      // The coach removed this connection: keep the log, drop coach workouts and the link
+      for(const [wid,w] of Object.entries(S.workouts))if(w.fromCoach)del("workouts",wid);
+      COACH.set(null);updateCoachBtn();render();
+      toast(j.error||"Your coach removed this connection.");return;
+    }
     if(!r.ok)throw new Error(j.error||`Sync failed (${r.status})`);
     // Replace programs from the coach with the latest set
     const keep=new Set();
