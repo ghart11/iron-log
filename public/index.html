@@ -2380,16 +2380,18 @@ async function coachSync(silent){
   }catch(e){COACH.set({...c,error:String(e.message||e)});if(!silent)toast(String(e.message||e))}
   finally{coachBusy=false}
 }
-function coachDialog(){
+function coachDialog(pre){
   const c=COACH.get()||{}, p=c.profile||{};
+  pre=pre||{};
   const opt=(list,v)=>list.map(x=>`<option ${x===v?"selected":""}>${x}</option>`).join("");
-  openDlg(`<div class="dlg-head"><div><div class="eyebrow">Iron Log Coach</div><h2>${c.clientId&&c.code?"Your coach":"Connect to your gym"}</h2></div><button class="icon-btn" data-act="close" aria-label="Close">×</button></div>
+  openDlg(`<div class="dlg-head"><div><div class="eyebrow">Iron Log Coach</div><h2>${c.clientId&&c.code?"Your coach":pre.code?"You’re invited":"Connect to your gym"}</h2></div><button class="icon-btn" data-act="close" aria-label="Close">×</button></div>
     <form id="coachF" class="dlg-body">
+      ${pre.code?`<p style="margin:0;font-weight:600">Your trainer invited you to Iron Log Coach. Check your details and tap Connect.</p>`:""}
       <p class="note" style="margin:0">Your trainer sees your logged workouts, reviews an AI-drafted plan for next week, and sends it here. Your photos stay on this device.</p>
       ${c.lastSync?`<div class="note">Last synced ${esc(fmtDate(c.lastSync,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}))}${c.error?` · <span style="color:var(--bad)">${esc(c.error)}</span>`:""}</div>`:""}
       <div class="form-grid">
-        <div class="field"><label for="cfName">Your name</label><input id="cfName" required maxlength="60" value="${esc(c.name||"")}" autofocus></div>
-        <div class="field"><label for="cfCode">Gym code</label><input id="cfCode" required maxlength="20" value="${esc(c.code||"")}" placeholder="From your trainer" autocapitalize="characters"></div>
+        <div class="field"><label for="cfName">Your name</label><input id="cfName" required maxlength="60" value="${esc(c.name||pre.name||"")}" autofocus></div>
+        <div class="field"><label for="cfCode">Gym code</label><input id="cfCode" required maxlength="20" value="${esc(c.code||pre.code||"")}" placeholder="From your trainer" autocapitalize="characters"></div>
         <div class="field"><label for="cfGoal">Main goal</label><select id="cfGoal">${opt(["Build muscle","Get stronger","Lose fat and get fitter","General fitness","Sport performance"],p.goal)}</select></div>
         <div class="field"><label for="cfDays">Training days per week</label><select id="cfDays">${[2,3,4,5,6].map(n=>`<option ${n===(+p.daysPerWeek||3)?"selected":""}>${n}</option>`).join("")}</select></div>
         <div class="field"><label for="cfExp">Experience</label><select id="cfExp">${opt(["New to lifting","Beginner (under 1 year)","Intermediate (1-3 years)","Advanced (3+ years)"],p.experience)}</select></div>
@@ -2607,6 +2609,13 @@ render();
 connect();
 updateCoachBtn();
 if(COACH.on())setTimeout(()=>coachSync(true),600);
+// Invite links: /?join=GYMCODE&name=Client%20Name
+(()=>{let q;try{q=new URLSearchParams(location.search)}catch(e){return}
+  const join=(q.get("join")||"").trim();if(!join||!COACH.available())return;
+  try{history.replaceState(null,"",location.pathname+location.hash)}catch(e){}
+  if(COACH.on()){toast("You’re already connected to your coach");return}
+  setTimeout(()=>coachDialog({code:join.toUpperCase().slice(0,20),name:(q.get("name")||"").trim().slice(0,60)}),300);
+})();
 (async()=>{try{if(window.claude&&claude.use){downloads=await claude.use("downloads");if(UI.tab==="progress")render()}}catch(e){downloads=null}})();
 })();
 </script>

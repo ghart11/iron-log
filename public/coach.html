@@ -3,6 +3,7 @@
 <title>Iron Log Coach</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Figtree:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
 <style>
 /* Trainer dashboard: client roster on the left, client detail and AI Coach on the right; weekly check-ins on their own tab. */
 :root{
@@ -91,6 +92,12 @@ td{padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}
 .empty{border:1.5px dashed var(--line);border-radius:var(--r);padding:24px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:center}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;z-index:30;max-width:calc(100vw - 32px)}
 .login{max-width:380px;margin:60px auto}
+.modal{position:fixed;inset:0;background:rgba(10,14,20,.55);display:grid;place-items:center;z-index:20;padding:16px}
+.modal>.panel{width:min(520px,100%);max-height:calc(100dvh - 32px);overflow:auto}
+.qr{background:#fff;border-radius:12px;padding:16px;display:grid;place-items:center;align-self:center;width:256px;height:256px}
+.qr img,.qr canvas{width:224px!important;height:224px!important}
+.linkbox{font-family:ui-monospace,Menlo,monospace;font-size:13px;word-break:break-all;background:var(--sunk);border-radius:8px;padding:10px 12px;user-select:all}
+.codebig{font-family:var(--f-display);font-size:34px;font-weight:700;letter-spacing:.12em}
 </style></head>
 <body>
 <header><div class="hw"><div class="brand">Iron Log <small>COACH</small></div><span style="flex:1"></span><a class="note" href="/">Client app →</a><button class="btn sm" id="logout" hidden>Sign out</button></div>
@@ -126,13 +133,13 @@ function render(){
 async function loadClients(){try{clients=(await api("clients")).clients;clients.sort((a,b)=>({at_risk:0,slipping:1,on_track:2}[a.status]-{at_risk:0,slipping:1,on_track:2}[b.status]));render();if(sel)openClient(sel)}catch(e){toast(e.message)}}
 
 function renderClients(){
-  if(!clients.length){main.innerHTML=`<div class="empty"><h2>No clients yet</h2><p>Clients join from the Iron Log app: <b>Coach</b> button → enter your gym code. For a demo, load four sample clients with six weeks of training.</p><button class="btn primary" data-a="seed">Load demo clients</button></div>`;return}
+  if(!clients.length){main.innerHTML=`<div class="empty"><h2>No clients yet</h2><p>Invite clients with a QR code or link, or load four sample clients with six weeks of training for a demo.</p><div class="row" style="justify-content:center"><button class="btn primary" data-a="invite">Invite a client</button><button class="btn" data-a="seed">Load demo clients</button></div></div>`;return}
   const c=clients.reduce((o,x)=>(o[x.status]=(o[x.status]||0)+1,o),{});
   main.innerHTML=`<div class="grid">
     <section class="panel" style="padding:0;gap:0"><div class="row between" style="padding:14px 14px 10px"><h2>Clients</h2><span class="note">${c.at_risk||0} at risk · ${c.slipping||0} slipping · ${c.on_track||0} on track</span></div>
       <div class="roster">${clients.map(x=>`<button class="client" data-a="open" data-id="${esc(x.clientId)}" aria-current="${x.clientId===sel}"><b>${esc(x.name)}</b>${chip(x.status)}
         <span class="note num">${x.sessions_this_week}/${x.target} sessions this week · ${x.days_since_last==null?"no workouts yet":x.days_since_last===0?"trained today":`last trained ${x.days_since_last}d ago`}${x.reasons.length?` · ${esc(x.reasons[0])}`:""}</span></button>`).join("")}</div>
-      <div class="row" style="padding:12px 14px;border-top:1px solid var(--line)"><button class="btn sm" data-a="refresh">Refresh</button>${clients.some(x=>x.demo)?`<button class="btn sm" data-a="unseed">Remove demo clients</button>`:`<button class="btn sm" data-a="seed">Load demo clients</button>`}</div></section>
+      <div class="row" style="padding:12px 14px;border-top:1px solid var(--line)"><button class="btn sm primary" data-a="invite">+ Invite client</button><button class="btn sm" data-a="refresh">Refresh</button>${clients.some(x=>x.demo)?`<button class="btn sm" data-a="unseed">Remove demo clients</button>`:`<button class="btn sm" data-a="seed">Load demo clients</button>`}</div></section>
     <section id="detail">${sel&&detail?detailHtml():`<div class="empty"><p>Pick a client to see their training and run the AI Coach.</p></div>`}</section></div>`;
 }
 async function openClient(id){sel=id;try{detail=await api("client?id="+encodeURIComponent(id));lastRun=detail.runs[0]&&!detail.runs[0].approvedAt?detail.runs[0]:null;if(tab==="clients")renderClients()}catch(e){toast(e.message)}}
@@ -209,6 +216,7 @@ document.addEventListener("click",async ev=>{
     if(a==="seed"){t.disabled=true;await api("seed",{method:"POST"});toast("Loaded 4 demo clients");await loadClients()}
     if(a==="unseed"){await api("seed",{method:"DELETE"});sel=null;detail=null;toast("Removed demo clients");await loadClients()}
     if(a==="refresh")await loadClients();
+    if(a==="invite")await openInvite();
     if(a==="open"){lastRun=null;await openClient(t.dataset.id)}
     if(a==="save-notes"){await api("notes",{method:"POST",body:JSON.stringify({clientId:sel,notes:$("#notesI").value})});detail.client.profile.notes=$("#notesI").value;toast("Notes saved")}
     if(a==="run")await runAgent();
@@ -217,6 +225,39 @@ document.addEventListener("click",async ev=>{
     if(a==="checkin"){t.disabled=true;t.textContent="Running…";await api("checkin",{method:"POST"});toast("Check-in finished");renderCheckins();loadClients()}
   }catch(e){toast(e.message);if(t.disabled)t.disabled=false}
 });
+// Invite: QR code + link that opens the client app with the gym code (and optionally their name) filled in
+let gymCode=null;
+async function openInvite(){
+  try{if(!gymCode)gymCode=(await api("invite")).code}catch(e){toast(e.message);return}
+  const m=document.createElement("div");m.className="modal";m.setAttribute("role","dialog");m.setAttribute("aria-modal","true");m.setAttribute("aria-label","Invite a client");
+  m.innerHTML=`<div class="panel"><div class="row between"><h2>Invite a client</h2><button class="btn sm" data-x="close" aria-label="Close">×</button></div>
+    <p class="note" style="margin:0">They scan the code with their phone camera (or open the link), check their details and tap <b>Connect</b>. They'll show up in your roster after their first sync.</p>
+    <div class="field"><label for="invName">Client's name (optional)</label><input id="invName" maxlength="60" placeholder="e.g. Taylor Brooks" autocomplete="off"></div>
+    <div class="qr" id="invQr" aria-label="QR code for the invite link"></div>
+    <div><div class="eyebrow">Invite link</div><div class="linkbox" id="invLink"></div></div>
+    <div class="row"><button class="btn primary" data-x="copy">Copy link</button><a class="btn" id="invSms">Text it</a><a class="btn" id="invMail">Email it</a></div>
+    <div><div class="eyebrow">Or have them type the gym code</div><div class="codebig">${esc(gymCode)}</div><p class="note" style="margin:2px 0 0">In the app: Coach button → gym code. Change it with GYM_CODE in Netlify.</p></div></div>`;
+  document.body.appendChild(m);
+  const name=m.querySelector("#invName"), qrEl=m.querySelector("#invQr");
+  const link=()=>{const u=new URL("/",location.origin);u.searchParams.set("join",gymCode);if(name.value.trim())u.searchParams.set("name",name.value.trim());return u.toString()};
+  const paint=()=>{
+    const l=link();m.querySelector("#invLink").textContent=l;
+    const msg=`Join me on Iron Log so I can build your training plan: ${l}`;
+    m.querySelector("#invSms").href="sms:?&body="+encodeURIComponent(msg);
+    m.querySelector("#invMail").href="mailto:?subject="+encodeURIComponent("Your Iron Log invite")+"&body="+encodeURIComponent(msg);
+    qrEl.innerHTML="";
+    if(window.QRCode){new QRCode(qrEl,{text:l,width:224,height:224,colorDark:"#14181d",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M})}
+    else qrEl.innerHTML=`<p class="note" style="text-align:center;color:#5b6570">QR code needs an internet connection. Use the link below.</p>`;
+  };
+  let t;name.addEventListener("input",()=>{clearTimeout(t);t=setTimeout(paint,250)});
+  paint();name.focus();
+  const close=()=>{m.remove();document.removeEventListener("keydown",esc_)};
+  const esc_=e=>{if(e.key==="Escape")close()};document.addEventListener("keydown",esc_);
+  m.addEventListener("click",async e=>{
+    if(e.target===m||e.target.closest('[data-x="close"]'))close();
+    if(e.target.closest('[data-x="copy"]')){try{await navigator.clipboard.writeText(link());toast("Invite link copied")}catch(err){const r=document.createRange();r.selectNodeContents(m.querySelector("#invLink"));getSelection().removeAllRanges();getSelection().addRange(r);toast("Press Ctrl+C to copy")}}
+  });
+}
 $("#logout").onclick=()=>{pin="";try{sessionStorage.removeItem("coachPin")}catch(e){};render()};
 render();if(pin)loadClients();
 })();

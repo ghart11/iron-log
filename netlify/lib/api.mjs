@@ -134,6 +134,9 @@ export async function handleCoach(req, { store, env, callModel, notify, path, st
     const report = await runWeeklyCheckin({ store, notify, trigger: "manual" });
     return json(report);
   }
+  if (route === "invite" && req.method === "GET") {
+    return json({ code: String(env.GYM_CODE || "IRONDEMO").toUpperCase() });
+  }
   if (route === "seed" && req.method === "POST") {
     const list = demoClients();
     for (const c of list) await store.setJSON(`clients/${c.clientId}`, c);
