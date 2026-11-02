@@ -47,6 +47,8 @@ Work like a coach:
 5. Call create_workout once for each training day. Suggest target_weight_lb from recent best sets (about 2-5% more for lifts that are progressing; the same or 5-10% less with more reps for stalled lifts).
 6. Call finish with a note for the trainer and a message for the client.
 
+Work efficiently: call several data tools in the same turn, and create several workouts in the same turn when you can.
+
 Rules: never diagnose or work around pain or injury — list it in flags for the trainer. If there is very little data, say so in flags and write a conservative beginner program. Keep each workout to 4-8 exercises and about 60 minutes.`;
 
 const err = (message) => ({ error: message });
@@ -107,33 +109,63 @@ const brief = (name, input, out) => {
   }
 };
 
-/** callModel({system, tools, messages}) must return an Anthropic Messages response. */
-export async function runCoachAgent(client, callModel, { maxTurns = 14, deadlineMs = 52000, now = Date.now() } = {}) {
-  const started = Date.now();
-  const state = { workouts: [], final: null };
-  const trace = [];
-  const messages = [{ role: "user", content: `Plan next week for client "${client.name}". Trainer's request: ${client.request || "Build next week's program from their recent training."}` }];
-  let stopped = "done";
-  for (let turn = 0; turn < maxTurns; turn++) {
-    if (Date.now() - started > deadlineMs) { stopped = "time"; break; }
-    const res = await callModel({ system: SYSTEM, tools: TOOLS, messages });
-    messages.push({ role: "assistant", content: res.content });
+/* A run is resumable: each HTTP request advances it for a few seconds and saves its state,
+   because Netlify stops a function after 30 seconds. */
+export function startRun(client) {
+  return {
+    v: 1, startedAt: Date.now(), turns: 0, errors: 0, done: false, stopped: null,
+    workouts: [], final: null, trace: [],
+    messages: [{ role: "user", content: `Plan next week for client "${client.name}". Trainer's request: ${client.request || "Build next week's program from their recent training."}` }],
+  };
+}
+
+/** Advance a run until it finishes or `budgetMs` has passed. callModel({system, tools, messages}) returns an Anthropic Messages response. */
+export async function stepRun(run, client, callModel, { budgetMs = 12000, maxTurns = 14, now = Date.now() } = {}) {
+  const t0 = Date.now();
+  const state = { workouts: run.workouts, final: run.final };
+  while (!run.done) {
+    if (run.turns >= maxTurns) { run.done = true; run.stopped = "turns"; break; }
+    if (Date.now() - t0 > budgetMs) break; // continue in the next request
+    let res;
+    try { res = await callModel({ system: SYSTEM, tools: TOOLS, messages: run.messages }); }
+    catch (e) {
+      run.errors++;
+      run.trace.push({ type: "thought", text: `Model call failed (${String(e.message || e).slice(0, 160)}). Retrying.` });
+      if (run.errors >= 3) { run.done = true; run.stopped = "error"; run.error = String(e.message || e).slice(0, 300); }
+      break;
+    }
+    run.turns++;
+    run.messages.push({ role: "assistant", content: res.content });
     const thoughts = res.content.filter((b) => b.type === "text").map((b) => b.text.trim()).filter(Boolean).join(" ");
-    if (thoughts) trace.push({ type: "thought", text: thoughts.slice(0, 600) });
+    if (thoughts) run.trace.push({ type: "thought", text: thoughts.slice(0, 600) });
     const calls = res.content.filter((b) => b.type === "tool_use");
-    if (!calls.length) { stopped = state.final ? "done" : "no_finish"; break; }
+    if (!calls.length) { run.done = true; run.stopped = state.final ? "done" : "no_finish"; break; }
     const results = [];
     for (const c of calls) {
       let out;
       try { out = runTool(c.name, c.input || {}, client, state, now); } catch (e) { out = err(String(e.message || e)); }
-      trace.push({ type: "tool", tool: c.name, input: c.input, result: brief(c.name, c.input || {}, out), ok: !out?.error });
+      run.trace.push({ type: "tool", tool: c.name, input: c.input, result: brief(c.name, c.input || {}, out), ok: !out?.error });
       results.push({ type: "tool_result", tool_use_id: c.id, content: JSON.stringify(out).slice(0, 12000), ...(out?.error ? { is_error: true } : {}) });
     }
-    messages.push({ role: "user", content: results });
-    if (state.final) break;
+    run.messages.push({ role: "user", content: results });
+    run.workouts = state.workouts; run.final = state.final;
+    if (state.final) { run.done = true; run.stopped = "done"; }
   }
-  if (!state.final && state.workouts.length) {
-    state.final = { coach_note: "The agent stopped before writing its note. Review the drafted workouts carefully.", client_message: "", flags: [stopped === "time" ? "Run hit the time limit" : "Run ended early"] };
+  if (run.done && !run.final && run.workouts.length) {
+    run.final = { coach_note: "The agent stopped before writing its note. Review the drafted workouts carefully.", client_message: "", flags: ["Run ended early"] };
   }
-  return { ok: !!state.workouts.length, stopped, steps: trace.filter((t) => t.type === "tool").length, trace, workouts: state.workouts, ...(state.final || {}), seconds: Math.round((Date.now() - started) / 100) / 10 };
+  return run;
+}
+
+// What the dashboard sees (no raw model messages)
+export function runView(run) {
+  return { done: run.done, stopped: run.stopped, error: run.error || null, ok: !!run.workouts.length, steps: run.trace.filter((t) => t.type === "tool").length,
+    trace: run.trace, workouts: run.workouts, ...(run.final || {}), seconds: Math.round((Date.now() - run.startedAt) / 100) / 10 };
+}
+
+// Runs to completion in one go (used by tests and local dev)
+export async function runCoachAgent(client, callModel, opts = {}) {
+  const run = startRun(client);
+  for (let i = 0; i < 20 && !run.done; i++) await stepRun(run, client, callModel, { budgetMs: 1e9, ...opts });
+  return runView(run);
 }

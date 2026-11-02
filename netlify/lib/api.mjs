@@ -1,5 +1,5 @@
 // Request handling shared by the Netlify Functions. Storage and the model are injected, so tests can run without Netlify.
-import { runCoachAgent } from "./agent.mjs";
+import { startRun, stepRun, runView } from "./agent.mjs";
 import { runWeeklyCheckin } from "./weekly.mjs";
 import { weeklyStatus, buildLibrary, trainingSummary, muscleBalance, findPlateaus } from "./analysis.mjs";
 import { demoClients } from "./seed.mjs";
@@ -43,7 +43,7 @@ export async function handleSync(req, { store, env }) {
 }
 
 /* ---------- Coach dashboard: /api/coach/* ---------- */
-export async function handleCoach(req, { store, env, callModel, notify, path }) {
+export async function handleCoach(req, { store, env, callModel, notify, path, stepBudgetMs = 12000 }) {
   const pin = req.headers.get("x-coach-pin") || "";
   if (pin !== String(env.COACH_PIN || "1234")) return bad("Wrong coach PIN.", 401);
   const route = path.replace(/^\/api\/coach\/?/, "").split("?")[0];
@@ -71,18 +71,34 @@ export async function handleCoach(req, { store, env, callModel, notify, path }) 
     c.profile = { ...c.profile, notes: clean(b.notes, 500) }; await store.setJSON(key, c);
     return json({ ok: true });
   }
-  if (route === "agent" && req.method === "POST") {
+  if ((route === "agent" || route === "agent-step") && req.method === "POST") {
+    // "agent" starts a run; "agent-step" continues it. Each request works for ~12 s (Netlify stops functions at 30 s).
     const b = await req.json().catch(() => ({}));
-    const c = await store.get(`clients/${clean(b.clientId, 64)}`, { type: "json" });
+    const id = clean(b.clientId, 64);
+    const c = await store.get(`clients/${id}`, { type: "json" });
     if (!c) return bad("Client not found.", 404);
-    if (!callModel) return bad("The AI model isn't available. Netlify AI Gateway needs one production deploy on a credit-based plan, or set ANTHROPIC_API_KEY.", 503);
-    let run;
-    try { run = await runCoachAgent({ ...c, request: clean(b.request, 400) }, callModel); }
-    catch (e) { return bad(`The AI Coach couldn't finish: ${String(e.message || e).slice(0, 300)}`, 502); }
-    run.id = `run-${Date.now()}`; run.at = new Date().toISOString(); run.request = clean(b.request, 400);
-    const key = `runs/${c.clientId}`; const runs = (await store.get(key, { type: "json" })) || [];
-    runs.push(run); await store.setJSON(key, runs.slice(-10));
-    return json(run);
+    if (!callModel) return bad("The AI model isn't available. Netlify AI Gateway needs one production deploy on a credit-based plan, or set ANTHROPIC_API_KEY in Netlify's environment variables.", 503);
+    let run, runId;
+    if (route === "agent") {
+      runId = `run-${Date.now()}`;
+      run = startRun({ ...c, request: clean(b.request, 400) });
+      run.request = clean(b.request, 400);
+    } else {
+      runId = clean(b.runId, 40);
+      run = await store.get(`agent-state/${id}/${runId}`, { type: "json" });
+      if (!run) return bad("That AI Coach run expired. Start it again.", 404);
+      if (run.done) return json({ id: runId, ...runView(run) });
+    }
+    await stepRun(run, { ...c, request: run.request }, callModel, { budgetMs: stepBudgetMs });
+    await store.setJSON(`agent-state/${id}/${runId}`, run);
+    const view = { id: runId, at: new Date(run.startedAt).toISOString(), request: run.request, ...runView(run) };
+    if (run.done) {
+      if (!view.ok) return bad(run.error ? `The AI Coach couldn't reach the model: ${run.error}` : "The AI Coach finished without drafting a program. Try again.", 502);
+      const key = `runs/${id}`; const runs = (await store.get(key, { type: "json" })) || [];
+      runs.push(view); await store.setJSON(key, runs.slice(-10));
+      await store.delete(`agent-state/${id}/${runId}`);
+    }
+    return json(view);
   }
   if (route === "assign" && req.method === "POST") {
     // Trainer approved a run: turn its drafts into workouts the client app will pick up

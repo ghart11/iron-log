@@ -1,27 +1,30 @@
-// Calls Claude through Netlify AI Gateway (credentials are injected at runtime).
-// Set COACH_MODEL to pin a model; otherwise the newest available Sonnet is picked from the gateway's live list.
+// Calls Claude through Netlify AI Gateway (credentials are injected at runtime), or ANTHROPIC_API_KEY if you set one.
+// COACH_MODEL pins a model. Otherwise the first model the gateway accepts from CANDIDATES is used and remembered.
 import Anthropic from "@anthropic-ai/sdk";
 
-let cachedModel = null;
+const CANDIDATES = ["claude-haiku-4-5-20251001", "claude-haiku-4-5", "claude-sonnet-4-5-20250929", "claude-sonnet-4-5"];
+let working = null;
 
-async function pickModel(env) {
-  if (env.COACH_MODEL) return env.COACH_MODEL;
-  if (cachedModel) return cachedModel;
-  try {
-    const r = await fetch("https://api.netlify.com/api/v1/ai-gateway/providers/detailed");
-    const text = await r.text();
-    const ids = [...new Set(text.match(/claude-[a-z0-9.-]+/g) || [])];
-    const pick = (re) => ids.filter((m) => re.test(m)).sort().reverse()[0];
-    cachedModel = pick(/sonnet/) || pick(/haiku/) || pick(/opus/) || null;
-  } catch { /* fall through */ }
-  return cachedModel || "claude-sonnet-4-5-20250929";
-}
+const isModelError = (e) => (e?.status === 404 || e?.status === 400) && /model/i.test(String(e?.message || ""));
 
 export function makeModelCaller(env) {
   if (!env.ANTHROPIC_API_KEY && !env.NETLIFY_AI_GATEWAY_KEY) return null;
-  const client = new Anthropic();
+  // Short timeout and no retries: a slow call fails fast and the next request retries it.
+  const client = new Anthropic({ timeout: 14000, maxRetries: 0 });
+  const list = env.COACH_MODEL ? [env.COACH_MODEL] : CANDIDATES;
   return async ({ system, tools, messages }) => {
-    const model = await pickModel(env);
-    return client.messages.create({ model, max_tokens: 2500, system, tools, messages });
+    const order = working ? [working, ...list.filter((m) => m !== working)] : list;
+    let last;
+    for (const model of order) {
+      try {
+        const res = await client.messages.create({ model, max_tokens: 2000, system, tools, messages });
+        working = model;
+        return res;
+      } catch (e) {
+        last = e;
+        if (!isModelError(e)) throw e; // only try another model when this one isn't available
+      }
+    }
+    throw last || new Error("No Claude model available on the gateway. Set COACH_MODEL.");
   };
 }

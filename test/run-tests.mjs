@@ -73,6 +73,25 @@ ok(`agent ran ${run.steps} tool steps, recovered from a bad exercise id, drafted
 
 r = await coach(store, "/api/coach/agent", "POST", { clientId: "demo-maya" }); assert.equal(r.status, 503); ok("agent reports a clear error when no model is configured");
 
+// Resumable runs: with no time budget each request does one model turn, and the dashboard keeps calling agent-step
+turn = 0; seen.length = 0;
+const slow = { callModel: fakeModel, stepBudgetMs: 0 };
+r = await coach(store, "/api/coach/agent", "POST", { clientId: "demo-maya" }, slow);
+let part = await r.json(), hops = 1;
+assert.equal(part.done, false, "first request should stop early");
+while (!part.done && hops < 20) { r = await coach(store, "/api/coach/agent-step", "POST", { clientId: "demo-maya", runId: part.id }, slow); part = await r.json(); hops++; }
+assert.equal(part.done, true); assert.equal(part.workouts.length, 4); assert.ok(!store.m.has(`agent-state/demo-maya/${part.id}`));
+ok(`run resumed across ${hops} requests and finished (fits Netlify's 30-second limit)`);
+
+// A failing model: retried, then a clear error
+let fails = 0;
+const broken = async () => { fails++; throw new Error("gateway timeout"); };
+r = await coach(store, "/api/coach/agent", "POST", { clientId: "demo-maya" }, { callModel: broken });
+part = await r.json();
+while (r.status === 200 && !part.done) { r = await coach(store, "/api/coach/agent-step", "POST", { clientId: "demo-maya", runId: part.id }, { callModel: broken }); part = await r.json(); }
+assert.equal(r.status, 502); assert.ok(part.error.includes("gateway timeout")); assert.equal(fails, 3);
+ok("a failing model is retried 3 times, then reported clearly");
+
 // --- trainer approves → client receives on next sync
 r = await coach(store, "/api/coach/assign", "POST", { clientId: "demo-maya", runId: run.id });
 assert.equal((await r.json()).sent, 4);

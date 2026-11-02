@@ -111,7 +111,7 @@ async function api(path,opts={}){
   const r=await fetch("/api/coach/"+path,{...opts,headers:{"Content-Type":"application/json","x-coach-pin":pin,...(opts.headers||{})}});
   let j={};try{j=await r.json()}catch(e){}
   if(r.status===401){pin="";try{sessionStorage.removeItem("coachPin")}catch(e){};render();throw new Error("Wrong PIN")}
-  if(!r.ok)throw new Error(j.error||`Request failed (${r.status})`);
+  if(!r.ok)throw new Error(j.error||(r.status===502||r.status===504?`The server timed out (${r.status}). Try again in a moment.`:`Request failed (${r.status})`));
   return j;
 }
 
@@ -172,13 +172,19 @@ function runHtml(r){
   </div>`;
 }
 let msgT;
+// The run continues across several short requests (Netlify stops a function at 30 s); steps appear as they arrive.
 async function runAgent(){
-  if(busy)return;busy=true;renderClients();
-  const msgs=["Reading the profile and trainer notes…","Checking six weeks of sessions…","Looking for stalled lifts…","Checking muscle balance…","Searching the exercise library…","Drafting workouts…","Writing the note for you…"];let k=0;
-  msgT=setInterval(()=>{const m=$("#busyMsg");if(m&&k<msgs.length-1)m.textContent=msgs[++k]},6000);
-  try{lastRun=await api("agent",{method:"POST",body:JSON.stringify({clientId:sel,request:($("#reqI")||{}).value||""})});toast(`AI Coach drafted ${lastRun.workouts.length} workouts in ${lastRun.seconds}s`)}
-  catch(e){lastRun=null;toast(e.message);busy=false;renderClients();const o=$("#runOut");if(o)o.innerHTML=`<div class="flag">${esc(e.message)}</div>`;clearInterval(msgT);return}
-  clearInterval(msgT);busy=false;renderClients();
+  if(busy)return;busy=true;lastRun=null;renderClients();
+  const out=()=>$("#runOut");
+  const show=r=>{const o=out();if(!o)return;o.innerHTML=`<div class="loading"><span class="spin"></span><span>${r?`Working… ${r.steps} step${r.steps===1?"":"s"} so far`:`Reading ${esc(detail.client.name.split(" ")[0])}'s profile…`}</span></div>${r&&r.trace.length?`<ol class="trace" style="margin-top:10px">${r.trace.map(t=>t.type==="thought"?`<li class="thought"><span class="note">${esc(t.text)}</span></li>`:`<li class="${t.ok?"":"err"}"><span><code>${esc(t.tool)}</code> ${esc(t.result)}</span></li>`).join("")}</ol>`:""}`};
+  show(null);
+  try{
+    let r=await api("agent",{method:"POST",body:JSON.stringify({clientId:sel,request:($("#reqI")||{}).value||""})});
+    for(let i=0;i<15&&!r.done;i++){show(r);r=await api("agent-step",{method:"POST",body:JSON.stringify({clientId:sel,runId:r.id})})}
+    if(!r.done)throw new Error("The AI Coach is taking too long. Try again.");
+    lastRun=r;toast(`AI Coach drafted ${r.workouts.length} workouts in ${r.seconds}s`);
+  }catch(e){busy=false;renderClients();const o=out();if(o)o.innerHTML=`<div class="flag">${esc(e.message)}</div>`;return}
+  busy=false;renderClients();
 }
 async function renderCheckins(){
   main.innerHTML=`<div class="loading"><span class="spin"></span>Loading reports…</div>`;

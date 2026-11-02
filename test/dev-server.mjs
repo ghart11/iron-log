@@ -39,7 +39,7 @@ http.createServer(async (req, res) => {
   const chunks = []; for await (const c of req) chunks.push(c);
   const request = new Request(url, { method: req.method, headers: req.headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks) });
   if (url.pathname === "/api/sync") return send(await handleSync(request, { store, env }));
-  if (url.pathname.startsWith("/api/coach/")) return send(await handleCoach(request, { store, env, path: url.pathname, callModel: fakeModel, notify: async () => ({ sent: ["dev log"] }) }));
+  if (url.pathname.startsWith("/api/coach/")) return send(await handleCoach(request, { store, env, path: url.pathname, callModel: fakeModel, stepBudgetMs: +(process.env.STEP_BUDGET ?? 12000), notify: async () => ({ sent: ["dev log"] }) }));
   try { const f = join("public", url.pathname === "/" ? "index.html" : url.pathname); res.writeHead(200, { "Content-Type": types[extname(f)] || "application/octet-stream" }); res.end(await readFile(f)); }
   catch { res.writeHead(404); res.end("Not found"); }
 }).listen(8888, () => console.log("Iron Log dev server on http://localhost:8888"));
