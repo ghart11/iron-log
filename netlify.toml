@@ -1,0 +1,15 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+  command = "node test/run-tests.mjs"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/coach.html"
+  [headers.values]
+    X-Robots-Tag = "noindex"

@@ -1,0 +1,15 @@
+{
+  "name": "iron-log",
+  "private": true,
+  "type": "module",
+  "description": "Workout tracker for gym clients, with an AI Coach agent and a weekly check-in automation for their trainers.",
+  "scripts": {
+    "test": "node test/run-tests.mjs",
+    "dev": "node test/dev-server.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": ">=0.39.0 <1",
+    "@netlify/blobs": ">=8.1.0"
+  },
+  "engines": { "node": ">=20" }
+}

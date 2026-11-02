@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Coach report form</title></head>
+<body>
+<!-- Netlify Forms reads this at deploy time. The weekly check-in automation posts its report here,
+     which triggers the form's email notification to the coach. -->
+<form name="coach-report" method="POST" data-netlify="true" netlify-honeypot="company" hidden>
+  <input name="company"><input name="subject"><textarea name="message"></textarea>
+</form>
+<p>This page only exists so Netlify can register the coach report form.</p>
+</body></html>

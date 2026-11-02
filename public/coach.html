@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Iron Log Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Trainer dashboard: client roster on the left, client detail and AI Coach on the right; weekly check-ins on their own tab. */
+:root{
+  --bg:#eceff2;--surface:#fff;--sunk:#f4f6f8;--ink:#15191e;--muted:#5b6570;--line:#d6dbe0;
+  --accent:#2a5db0;--accent-ink:#fff;--good:#2f8a4c;--warn:#b7791f;--bad:#c3352f;--ai:#6b4fc8;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;--f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;--r:10px;
+}
+@media (prefers-color-scheme:dark){:root{--bg:#111418;--surface:#1a1e23;--sunk:#15181c;--ink:#e8ebee;--muted:#9aa4ae;--line:#2b3138;--accent:#5f92e8;--accent-ink:#0d1420;--good:#56b878;--warn:#e0a84a;--bad:#e8645d;--ai:#a48ef0;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+.num{font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.03em;margin:0;line-height:1.05;text-wrap:balance}
+h1{font-size:30px}h2{font-size:21px}h3{font-size:17px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.note{font-size:13px;color:var(--muted)}
+header{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;padding:10px max(16px,env(safe-area-inset-left,0px)) 0 max(16px,env(safe-area-inset-right,0px))}
+.hw{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{font-family:var(--f-display);font-weight:700;font-size:24px;text-transform:uppercase;letter-spacing:.02em;display:flex;align-items:center;gap:8px}
+.brand small{font-family:var(--f-body);font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--ai);border:1px solid var(--ai);border-radius:4px;padding:1px 6px}
+nav{max-width:1180px;margin:0 auto;display:flex;gap:4px}
+nav button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 12px 9px;font-family:var(--f-display);font-weight:600;font-size:17px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);cursor:pointer}
+nav button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+main{max-width:1180px;margin:0 auto;padding:20px max(16px,env(safe-area-inset-right,0px)) 60px max(16px,env(safe-area-inset-left,0px))}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer;min-height:40px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ai{background:var(--ai);border-color:var(--ai);color:#fff}
+.btn.sm{min-height:32px;padding:4px 10px;font-size:13px}
+.btn:disabled{opacity:.55;cursor:wait}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}
+.grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+input,select,textarea{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:8px 10px;min-height:40px;width:100%}
+textarea{min-height:70px;resize:vertical}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.st-at_risk{color:var(--bad);background:color-mix(in srgb,var(--bad) 13%,transparent)}
+.st-slipping{color:var(--warn);background:color-mix(in srgb,var(--warn) 15%,transparent)}
+.st-on_track{color:var(--good);background:color-mix(in srgb,var(--good) 14%,transparent)}
+.roster{display:flex;flex-direction:column}
+.client{display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:12px;border:0;border-top:1px solid var(--line);background:none;text-align:left;cursor:pointer}
+.client:first-child{border-top:0}
+.client:hover,.client[aria-current="true"]{background:var(--sunk)}
+.client b{font-size:15px}
+.client .note{grid-column:1/-1}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media (max-width:640px){.kpis{grid-template-columns:1fr 1fr}}
+.stat{background:var(--sunk);border-radius:8px;padding:10px 12px}
+.stat .v{font-family:var(--f-display);font-size:26px;font-weight:600;line-height:1.1}
+.stat .l{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media (max-width:640px){.two{grid-template-columns:1fr}}
+ul.clean{margin:0;padding-left:18px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}
+.tw{overflow-x:auto}
+.ai-panel{border:2px solid var(--ai);background:color-mix(in srgb,var(--ai) 5%,var(--surface))}
+.ai-panel h2{color:var(--ai)}
+.trace{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0;counter-reset:s}
+.trace li{display:grid;grid-template-columns:26px 1fr;gap:10px;padding:7px 0;border-top:1px dashed var(--line);counter-increment:s}
+.trace li:first-child{border-top:0}
+.trace li::before{content:counter(s);width:24px;height:24px;border-radius:50%;background:var(--ai);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center}
+.trace li.thought::before{content:"…";background:var(--sunk);color:var(--muted)}
+.trace li.err::before{background:var(--bad)}
+.trace code{font-size:12px;background:var(--sunk);padding:1px 5px;border-radius:4px}
+.wk{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.wk-h{background:var(--sunk);padding:8px 12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.wk table td{font-size:13px}
+.ss{border-left:3px solid var(--accent)}
+.flag{background:color-mix(in srgb,var(--bad) 10%,transparent);border:1px solid color-mix(in srgb,var(--bad) 40%,transparent);border-radius:8px;padding:8px 12px;font-size:14px}
+.pre{white-space:pre-wrap;font-size:14px;background:var(--sunk);border-radius:8px;padding:10px 12px}
+.loading{display:flex;gap:10px;align-items:center;color:var(--ai);font-weight:600}
+.spin{width:18px;height:18px;border:3px solid color-mix(in srgb,var(--ai) 25%,transparent);border-top-color:var(--ai);border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.steps li{display:grid;grid-template-columns:28px 1fr auto;gap:10px;padding:8px 0;border-top:1px solid var(--line);align-items:start}
+.steps li:first-child{border-top:0}
+.steps .n{width:24px;height:24px;border-radius:50%;background:var(--good);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center}
+.empty{border:1.5px dashed var(--line);border-radius:var(--r);padding:24px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:center}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;z-index:30;max-width:calc(100vw - 32px)}
+.login{max-width:380px;margin:60px auto}
+</style></head>
+<body>
+<header><div class="hw"><div class="brand">Iron Log <small>COACH</small></div><span style="flex:1"></span><a class="note" href="/">Client app →</a><button class="btn sm" id="logout" hidden>Sign out</button></div>
+<nav id="tabs" hidden><button data-tab="clients" aria-selected="true">Clients</button><button data-tab="checkins" aria-selected="false">Weekly check-ins</button></nav></header>
+<main id="main"></main>
+<script>
+(() => {
+"use strict";
+const $=s=>document.querySelector(s), main=$("#main");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ST={at_risk:"At risk",slipping:"Slipping",on_track:"On track"};
+const chip=s=>`<span class="chip st-${s}">${ST[s]||s}</span>`;
+const fmtDate=(d,o)=>{try{return new Date(d).toLocaleDateString(undefined,o||{month:"short",day:"numeric"})}catch(e){return ""}};
+let pin=""; try{pin=sessionStorage.getItem("coachPin")||""}catch(e){}
+let tab="clients", clients=[], sel=null, detail=null, lastRun=null, busy=false;
+let tt;function toast(m){let t=$(".toast");if(!t){t=document.createElement("div");t.className="toast";t.setAttribute("role","status");document.body.appendChild(t)}t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,3200)}
+async function api(path,opts={}){
+  const r=await fetch("/api/coach/"+path,{...opts,headers:{"Content-Type":"application/json","x-coach-pin":pin,...(opts.headers||{})}});
+  let j={};try{j=await r.json()}catch(e){}
+  if(r.status===401){pin="";try{sessionStorage.removeItem("coachPin")}catch(e){};render();throw new Error("Wrong PIN")}
+  if(!r.ok)throw new Error(j.error||`Request failed (${r.status})`);
+  return j;
+}
+
+function render(){
+  $("#tabs").hidden=!pin;$("#logout").hidden=!pin;
+  document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===tab)));
+  if(!pin){main.innerHTML=`<form class="panel login" id="loginF"><h1>Coach sign-in</h1><p class="note" style="margin:0">Enter the coach PIN your gym set up in Netlify (COACH_PIN).</p>
+    <div class="field"><label for="pinI">Coach PIN</label><input id="pinI" type="password" inputmode="numeric" autocomplete="current-password" required autofocus></div><button class="btn primary">Sign in</button></form>`;
+    $("#loginF").onsubmit=async e=>{e.preventDefault();pin=$("#pinI").value.trim();try{await api("clients");try{sessionStorage.setItem("coachPin",pin)}catch(e){};loadClients()}catch(err){toast(err.message)}};return}
+  if(tab==="clients")renderClients();else renderCheckins();
+}
+async function loadClients(){try{clients=(await api("clients")).clients;clients.sort((a,b)=>({at_risk:0,slipping:1,on_track:2}[a.status]-{at_risk:0,slipping:1,on_track:2}[b.status]));render();if(sel)openClient(sel)}catch(e){toast(e.message)}}
+
+function renderClients(){
+  if(!clients.length){main.innerHTML=`<div class="empty"><h2>No clients yet</h2><p>Clients join from the Iron Log app: <b>Coach</b> button → enter your gym code. For a demo, load four sample clients with six weeks of training.</p><button class="btn primary" data-a="seed">Load demo clients</button></div>`;return}
+  const c=clients.reduce((o,x)=>(o[x.status]=(o[x.status]||0)+1,o),{});
+  main.innerHTML=`<div class="grid">
+    <section class="panel" style="padding:0;gap:0"><div class="row between" style="padding:14px 14px 10px"><h2>Clients</h2><span class="note">${c.at_risk||0} at risk · ${c.slipping||0} slipping · ${c.on_track||0} on track</span></div>
+      <div class="roster">${clients.map(x=>`<button class="client" data-a="open" data-id="${esc(x.clientId)}" aria-current="${x.clientId===sel}"><b>${esc(x.name)}</b>${chip(x.status)}
+        <span class="note num">${x.sessions_this_week}/${x.target} sessions this week · ${x.days_since_last==null?"no workouts yet":x.days_since_last===0?"trained today":`last trained ${x.days_since_last}d ago`}${x.reasons.length?` · ${esc(x.reasons[0])}`:""}</span></button>`).join("")}</div>
+      <div class="row" style="padding:12px 14px;border-top:1px solid var(--line)"><button class="btn sm" data-a="refresh">Refresh</button>${clients.some(x=>x.demo)?`<button class="btn sm" data-a="unseed">Remove demo clients</button>`:`<button class="btn sm" data-a="seed">Load demo clients</button>`}</div></section>
+    <section id="detail">${sel&&detail?detailHtml():`<div class="empty"><p>Pick a client to see their training and run the AI Coach.</p></div>`}</section></div>`;
+}
+async function openClient(id){sel=id;try{detail=await api("client?id="+encodeURIComponent(id));lastRun=detail.runs[0]&&!detail.runs[0].approvedAt?detail.runs[0]:null;if(tab==="clients")renderClients()}catch(e){toast(e.message)}}
+function detailHtml(){
+  const d=detail, s=d.status, p=d.client.profile||{};
+  const top=d.summary.exercises.slice(0,8);
+  return `<div style="display:flex;flex-direction:column;gap:16px">
+  <div class="panel"><div class="row between"><div><div class="eyebrow">${esc(p.goal||"No goal set")} · ${esc(p.experience||"")}</div><h1>${esc(d.client.name)}</h1></div>${chip(s.status)}</div>
+    <div class="kpis"><div class="stat"><div class="l">This week</div><div class="v num">${s.sessions_this_week}/${s.target}</div></div>
+      <div class="stat"><div class="l">6-week adherence</div><div class="v num">${d.summary.adherence_pct}%</div></div>
+      <div class="stat"><div class="l">Last workout</div><div class="v num">${s.days_since_last==null?"—":s.days_since_last+"d ago"}</div></div>
+      <div class="stat"><div class="l">PRs this week</div><div class="v num">${s.prs_this_week.length}</div></div></div>
+    ${s.reasons.length?`<div class="note">⚑ ${s.reasons.map(esc).join(" · ")}</div>`:""}
+    <div class="two"><div><div class="eyebrow">Stalled lifts</div>${d.plateaus.plateaus.length?`<ul class="clean">${d.plateaus.plateaus.map(x=>`<li>${esc(x.name)} <span class="note">last 3: ${x.last_three.map(esc).join(", ")}</span></li>`).join("")}</ul>`:`<p class="note" style="margin:4px 0 0">None</p>`}</div>
+      <div><div class="eyebrow">Under-trained (14 days)</div><p style="margin:4px 0 0">${d.balance.under_trained.length?d.balance.under_trained.map(m=>esc((d.balance.sets_per_week.find(r=>r.muscle===m)||{}).label||m)).join(", "):"Nothing under 6 sets/week"}</p></div></div>
+    ${top.length?`<div class="tw"><table><thead><tr><th>Exercise</th><th>Times</th><th>Recent best sets</th><th>e1RM change</th></tr></thead><tbody>${top.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.times_done}</td><td class="num">${x.recent_best_sets.map(b=>esc(b.best)).join(" → ")}</td><td class="num">${x.est_1rm_change_pct==null?"—":(x.est_1rm_change_pct>0?"+":"")+x.est_1rm_change_pct+"%"}</td></tr>`).join("")}</tbody></table></div>`:""}
+    <div class="field"><label for="notesI">Trainer notes (injuries, preferences — the AI Coach reads these)</label><textarea id="notesI" maxlength="500">${esc(p.notes||"")}</textarea></div>
+    <div><button class="btn sm" data-a="save-notes">Save notes</button></div></div>
+  <div class="panel ai-panel"><div class="row between"><h2>AI Coach</h2><span class="note">Reads the data, decides, drafts next week · you approve</span></div>
+    <div class="field"><label for="reqI">What should it focus on?</label><textarea id="reqI" maxlength="400">Build next week's program from their recent training.</textarea></div>
+    <div class="row"><button class="btn ai" data-a="run" ${busy?"disabled":""}>${busy?"Working…":"Run AI Coach"}</button><span class="note">Takes about 20–50 seconds.</span></div>
+    <div id="runOut">${busy?`<div class="loading"><span class="spin"></span><span id="busyMsg">Reading ${esc(d.client.name.split(" ")[0])}'s profile…</span></div>`:lastRun?runHtml(lastRun):""}</div></div>
+  ${d.assigned.length?`<div class="panel"><h3>Currently assigned (${d.assigned.length} workouts)</h3><p class="note" style="margin:0">Sent ${esc(fmtDate(d.assigned[0].assignedAt,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}))}: ${d.assigned.map(a=>esc(a.name)).join(", ")}</p></div>`:""}
+  </div>`;
+}
+function runHtml(r){
+  return `<div style="display:flex;flex-direction:column;gap:14px">
+    <div class="note">${r.steps} steps · ${r.seconds}s · ${esc(fmtDate(r.at,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}))}${r.approvedAt?" · <b>approved and sent</b>":""}</div>
+    <details ${r.approvedAt?"":"open"}><summary class="eyebrow" style="cursor:pointer">What the agent did</summary>
+      <ol class="trace" style="margin-top:8px">${r.trace.map(t=>t.type==="thought"?`<li class="thought"><span class="note">${esc(t.text)}</span></li>`:`<li class="${t.ok?"":"err"}"><span><code>${esc(t.tool)}</code> ${esc(t.result)}</span></li>`).join("")}</ol></details>
+    ${(r.flags||[]).length?`<div class="flag"><b>Needs your judgment:</b> ${r.flags.map(esc).join(" · ")}</div>`:""}
+    ${r.coach_note?`<div><div class="eyebrow">Note for you</div><div class="pre">${esc(r.coach_note)}</div></div>`:""}
+    <div><div class="eyebrow">Draft program</div><div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">${r.workouts.map(w=>`<div class="wk"><div class="wk-h"><b>${esc(w.name)}</b><span class="note">${esc(w.focus||"")}</span></div><div class="tw"><table><tbody>
+      ${w.exercises.map((x,i)=>`<tr class="${x.superset_with_next||(i>0&&w.exercises[i-1].superset_with_next)?"ss":""}"><td>${esc(x.name)}${x.note?`<div class="note">${esc(x.note)}</div>`:""}</td><td class="num">${x.sets} × ${esc(x.reps)}</td><td class="num">${x.target_weight_lb?x.target_weight_lb+" lb":""}</td><td class="num note">${x.rest_seconds?Math.round(x.rest_seconds)+"s rest":""}${x.superset_with_next?" · superset ↓":""}</td></tr>`).join("")}</tbody></table></div></div>`).join("")}</div></div>
+    ${r.approvedAt?"":`<div class="field"><label for="msgI">Message to the client (editable)</label><textarea id="msgI" maxlength="600">${esc(r.client_message||"")}</textarea></div>
+    <div class="row"><button class="btn primary" data-a="approve" data-run="${esc(r.id)}">Approve and send to ${esc(detail.client.name.split(" ")[0])}</button><button class="btn" data-a="discard">Discard</button></div>`}
+  </div>`;
+}
+let msgT;
+async function runAgent(){
+  if(busy)return;busy=true;renderClients();
+  const msgs=["Reading the profile and trainer notes…","Checking six weeks of sessions…","Looking for stalled lifts…","Checking muscle balance…","Searching the exercise library…","Drafting workouts…","Writing the note for you…"];let k=0;
+  msgT=setInterval(()=>{const m=$("#busyMsg");if(m&&k<msgs.length-1)m.textContent=msgs[++k]},6000);
+  try{lastRun=await api("agent",{method:"POST",body:JSON.stringify({clientId:sel,request:($("#reqI")||{}).value||""})});toast(`AI Coach drafted ${lastRun.workouts.length} workouts in ${lastRun.seconds}s`)}
+  catch(e){lastRun=null;toast(e.message);busy=false;renderClients();const o=$("#runOut");if(o)o.innerHTML=`<div class="flag">${esc(e.message)}</div>`;clearInterval(msgT);return}
+  clearInterval(msgT);busy=false;renderClients();
+}
+async function renderCheckins(){
+  main.innerHTML=`<div class="loading"><span class="spin"></span>Loading reports…</div>`;
+  let reports=[];try{reports=(await api("reports")).reports}catch(e){toast(e.message)}
+  const r=reports[0];
+  main.innerHTML=`<div style="display:flex;flex-direction:column;gap:16px">
+  <div class="panel"><div class="row between"><div><h1>Weekly check-in</h1><p class="note" style="margin:4px 0 0">Automation · runs every Monday at 7:00 a.m. Mountain, or now on demand. Collects every client's log, scores the week, flags who's at risk, saves this report, nudges at-risk clients in their app and notifies you.</p></div>
+    <button class="btn primary" data-a="checkin">Run check-in now</button></div></div>
+  ${r?`<div class="panel"><div class="row between"><h2>${esc(fmtDate(r.createdAt,{weekday:"long",month:"long",day:"numeric"}))}</h2><span class="note">${r.trigger==="schedule"?"Scheduled run":"Run manually"} · ${esc(fmtDate(r.createdAt,{hour:"numeric",minute:"2-digit"}))}</span></div>
+    <div class="kpis"><div class="stat"><div class="l">At risk</div><div class="v num" style="color:var(--bad)">${r.counts.at_risk}</div></div><div class="stat"><div class="l">Slipping</div><div class="v num" style="color:var(--warn)">${r.counts.slipping}</div></div><div class="stat"><div class="l">On track</div><div class="v num" style="color:var(--good)">${r.counts.on_track}</div></div><div class="stat"><div class="l">Clients</div><div class="v num">${r.clients.length}</div></div></div>
+    <div class="two"><div><div class="eyebrow">Automation steps</div><ol class="steps">${r.steps.map((s,i)=>`<li><span class="n">${i+1}</span><span><b>${esc(s.name)}</b><div class="note">${esc(s.detail)}</div></span><span class="note num">${s.ms}ms</span></li>`).join("")}</ol></div>
+    <div class="tw"><div class="eyebrow">Clients</div><table><thead><tr><th>Client</th><th>Status</th><th>Week</th><th>Notes</th></tr></thead><tbody>${r.clients.map(c=>`<tr><td><b>${esc(c.name)}</b></td><td>${chip(c.status)}</td><td class="num">${c.sessions_this_week}/${c.target}</td><td class="note">${[...c.reasons,...(c.prs_this_week.length?["PRs: "+c.prs_this_week.join("; ")]:[])].map(esc).join("<br>")||"—"}</td></tr>`).join("")}</tbody></table></div></div></div>`
+  :`<div class="empty"><p>No check-ins yet. Run one now to see the report.</p></div>`}
+  ${reports.length>1?`<div class="panel"><h3>Earlier reports</h3><table><tbody>${reports.slice(1).map(x=>`<tr><td>${esc(fmtDate(x.createdAt,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}))}</td><td class="note">${x.trigger}</td><td class="num">${x.counts.at_risk} at risk · ${x.counts.slipping} slipping · ${x.counts.on_track} on track</td></tr>`).join("")}</tbody></table></div>`:""}
+  </div>`;
+}
+document.addEventListener("click",async ev=>{
+  const t=ev.target.closest("[data-a],[data-tab]");if(!t)return;
+  if(t.dataset.tab){tab=t.dataset.tab;render();return}
+  const a=t.dataset.a;
+  try{
+    if(a==="seed"){t.disabled=true;await api("seed",{method:"POST"});toast("Loaded 4 demo clients");await loadClients()}
+    if(a==="unseed"){await api("seed",{method:"DELETE"});sel=null;detail=null;toast("Removed demo clients");await loadClients()}
+    if(a==="refresh")await loadClients();
+    if(a==="open"){lastRun=null;await openClient(t.dataset.id)}
+    if(a==="save-notes"){await api("notes",{method:"POST",body:JSON.stringify({clientId:sel,notes:$("#notesI").value})});detail.client.profile.notes=$("#notesI").value;toast("Notes saved")}
+    if(a==="run")await runAgent();
+    if(a==="discard"){lastRun=null;renderClients()}
+    if(a==="approve"){t.disabled=true;const res=await api("assign",{method:"POST",body:JSON.stringify({clientId:sel,runId:t.dataset.run,message:($("#msgI")||{}).value})});toast(`Sent ${res.sent} workouts to ${detail.client.name.split(" ")[0]}. They'll see them next time the app syncs.`);await openClient(sel)}
+    if(a==="checkin"){t.disabled=true;t.textContent="Running…";await api("checkin",{method:"POST"});toast("Check-in finished");renderCheckins();loadClients()}
+  }catch(e){toast(e.message);if(t.disabled)t.disabled=false}
+});
+$("#logout").onclick=()=>{pin="";try{sessionStorage.removeItem("coachPin")}catch(e){};render()};
+render();if(pin)loadClients();
+})();
+</script>
+</body></html>
